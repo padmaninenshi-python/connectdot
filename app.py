@@ -1,20 +1,13 @@
-# CRITICAL: This imports and patches must be at the very top for Render
-import eventlet
-eventlet.monkey_patch()
-
 from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import random
 import string
 import uuid
-from datetime import datetime
 import os
+from datetime import datetime
 
 app = Flask(__name__)
-# Use an environment variable for secret key in production
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'default-key-for-dev')
-
-# Initialize SocketIO with Eventlet async mode
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 # Store active rooms and games
@@ -512,4 +505,5 @@ def handle_disconnect():
             break
 
 if __name__ == '__main__':
-    socketio.run(app, debug=False)
+    port = int(os.environ.get('PORT', 5000))
+    socketio.run(app, debug=False, host='0.0.0.0', port=port)
