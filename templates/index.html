@@ -1,1 +1,962 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dots and Boxes - 100 Levels</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 { text-align: center; color: #667eea; margin-bottom: 20px; font-size: 2.5em; }
+        .screen { display: none; }
+        .screen.active { display: block; }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            margin: 10px;
+            border-radius: 10px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        button:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        button:disabled { background: #ccc; cursor: not-allowed; transform: none; }
+        .menu { text-align: center; padding: 20px; }
+        .level-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 15px;
+            padding: 20px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .level-button {
+            aspect-ratio: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+            font-size: 1.2em;
+            font-weight: bold;
+            position: relative;
+        }
+        .level-button.easy { background: #48bb78; }
+        .level-button.medium { background: #ed8936; }
+        .level-button.hard { background: #f56565; }
+        .level-button.completed::after {
+            content: '✓';
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            font-size: 0.8em;
+            background: white;
+            color: green;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .level-info { font-size: 0.7em; margin-top: 5px; }
+        .share-link-box {
+            background: #f0f0f0;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .share-link-box h2 { color: #667eea; margin-bottom: 15px; }
+        .link-display {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            justify-content: center;
+            margin: 15px 0;
+        }
+        .link-input {
+            flex: 1;
+            max-width: 500px;
+            padding: 12px;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            font-size: 1em;
+            background: white;
+        }
+        .copy-btn {
+            padding: 12px 24px;
+            background: #48bb78;
+        }
+        .copy-btn:hover { background: #38a169; }
+        .game-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f0f0f0;
+            border-radius: 10px;
+        }
+        .player-info {
+            text-align: center;
+            padding: 15px;
+            border-radius: 8px;
+            min-width: 150px;
+            position: relative;
+            transition: all 0.3s;
+        }
+        .player-info.active {
+            background: #667eea;
+            color: white;
+            transform: scale(1.05);
+        }
+        .player-name { font-weight: bold; font-size: 1.2em; margin-bottom: 5px; }
+        .player-score { font-size: 2em; font-weight: bold; }
+        #gameCanvas {
+            border: 3px solid #667eea;
+            border-radius: 10px;
+            cursor: pointer;
+            display: block;
+            margin: 20px auto;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        .game-status {
+            text-align: center;
+            padding: 15px;
+            margin: 15px 0;
+            background: #e6f3ff;
+            border-radius: 8px;
+            color: #667eea;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+        .timer {
+            text-align: center;
+            padding: 15px;
+            margin: 15px 0;
+            background: #fff3cd;
+            border-radius: 8px;
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #856404;
+        }
+        .timer.warning {
+            background: #f8d7da;
+            color: #721c24;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        .game-over-message {
+            text-align: center;
+            padding: 20px;
+            margin: 20px 0;
+            background: #48bb78;
+            color: white;
+            border-radius: 10px;
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+        .level-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f0f0f0;
+            border-radius: 10px;
+        }
+        .difficulty-badge {
+            padding: 8px 16px;
+            border-radius: 20px;
+            color: white;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        .difficulty-badge.easy { background: #48bb78; }
+        .difficulty-badge.medium { background: #ed8936; }
+        .difficulty-badge.hard { background: #f56565; }
+        .back-button { padding: 10px 20px; font-size: 0.9em; }
+        .grid-size-selector {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .grid-size-selector label {
+            display: block;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+            color: #667eea;
+            font-weight: bold;
+        }
+        .grid-size-selector select {
+            padding: 10px 20px;
+            border: 2px solid #667eea;
+            border-radius: 10px;
+            font-size: 1em;
+            cursor: pointer;
+        }
+        .waiting-message {
+            text-align: center;
+            padding: 30px;
+            color: #667eea;
+            font-size: 1.3em;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .home-button {
+            background: #6c757d;
+        }
+        .home-button:hover {
+            background: #5a6268;
+        }
+        .action-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 Dots and Boxes</h1>
 
+        <!-- Main Menu -->
+        <div id="mainMenu" class="screen active">
+            <div class="menu">
+                <h2 style="color: #667eea; margin-bottom: 20px;">Choose Game Mode</h2>
+                <button onclick="showLevelSelect()">📚 Single Player vs AI (100 Levels)</button>
+                <button onclick="showMultiplayerMenu()">👥 Multiplayer (2 Players)</button>
+            </div>
+        </div>
+
+        <!-- Level Select -->
+        <div id="levelSelect" class="screen">
+            <div class="menu">
+                <h2 style="color: #667eea; margin-bottom: 20px;">Select Level</h2>
+                <div class="level-grid" id="levelGrid"></div>
+                <button class="back-button home-button" onclick="showMainMenu()">🏠 Home</button>
+            </div>
+        </div>
+
+        <!-- Multiplayer Menu -->
+        <div id="multiplayerMenu" class="screen">
+            <div class="menu">
+                <h2 style="color: #667eea; margin-bottom: 20px;">Multiplayer Mode</h2>
+                <div class="grid-size-selector">
+                    <label for="gridSize">Grid Size:</label>
+                    <select id="gridSize">
+                        <option value="3">3x3 (Easy)</option>
+                        <option value="4">4x4</option>
+                        <option value="5" selected>5x5 (Normal)</option>
+                        <option value="6">6x6</option>
+                        <option value="7">7x7 (Hard)</option>
+                    </select>
+                </div>
+                <button onclick="createRoom()">🏠 Create Game & Get Link</button>
+                <button class="back-button home-button" onclick="showMainMenu()">🏠 Home</button>
+            </div>
+        </div>
+
+        <!-- Waiting Room with Share Link -->
+        <div id="waitingRoom" class="screen">
+            <div class="share-link-box">
+                <h2>🔗 Share this link with your friend</h2>
+                <p style="color: #666; margin-bottom: 15px;">Copy and send this link to play together!</p>
+                <div class="link-display">
+                    <input type="text" class="link-input" id="shareLinkInput" readonly>
+                    <button class="copy-btn" onclick="copyShareLink()">📋 Copy Link</button>
+                </div>
+                <div style="margin-top: 15px;">
+                    <button onclick="shareOnWhatsApp()" style="background: #25D366;">
+                        📱 Share on WhatsApp
+                    </button>
+                    <button onclick="shareGeneric()" style="background: #667eea;">
+                        📤 Share
+                    </button>
+                </div>
+            </div>
+            <div class="waiting-message">
+                <div class="spinner"></div>
+                Waiting for opponent to join...
+            </div>
+            <div class="menu">
+                <button onclick="cancelRoom()">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Game Screen -->
+        <div id="gameScreen" class="screen">
+            <div class="level-header" id="levelHeader" style="display: none;">
+                <div>
+                    <span style="font-size: 1.5em; font-weight: bold;">Level <span id="currentLevel"></span></span>
+                    <span class="difficulty-badge" id="difficultyBadge"></span>
+                </div>
+                <button class="back-button home-button" onclick="quitGame()">🏠 Home</button>
+            </div>
+
+            <div class="timer" id="timer" style="display: none;">
+                ⏱️ Time: <span id="timeDisplay">0:00</span>
+            </div>
+
+            <div class="game-info">
+                <div class="player-info" id="player1Info">
+                    <div class="player-name" id="player1Name">Player 1</div>
+                    <div class="player-score" id="player1Score">0</div>
+                </div>
+                <div class="player-info" id="player2Info">
+                    <div class="player-name" id="player2Name">Player 2</div>
+                    <div class="player-score" id="player2Score">0</div>
+                </div>
+            </div>
+
+            <div class="game-status" id="gameStatus"></div>
+
+            <canvas id="gameCanvas"></canvas>
+
+            <div id="gameOverMessage" class="game-over-message" style="display: none;"></div>
+
+            <div class="menu action-buttons">
+                <button id="nextLevelBtn" onclick="nextLevel()" style="display: none;">Next Level →</button>
+                <button id="retryLevelBtn" onclick="retryLevel()" style="display: none;">🔄 Try Again</button>
+                <button class="home-button" onclick="quitGame()">🏠 Home</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let socket = null;
+        let gameId = null;
+        let gameMode = null;
+        let currentLevel = 1;
+        let completedLevels = JSON.parse(localStorage.getItem('completedLevels') || '[]');
+        let gameState = null;
+        let myPlayerNumber = 1;
+        let currentRoomCode = null;
+        let isMyTurn = true;
+        let timerInterval = null;
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        let cellSize = 60;
+        let dotRadius = 6;
+        let offset = 40;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadLevels();
+            initializeSocket();
+            checkUrlForRoom();
+        });
+
+        function checkUrlForRoom() {
+            const path = window.location.pathname;
+            const match = path.match(/\/room\/([A-Z0-9]{6})/);
+            if (match) {
+                const roomCode = match[1];
+                setTimeout(() => {
+                    joinRoomDirectly(roomCode);
+                }, 500);
+            }
+        }
+
+        function initializeSocket() {
+            socket = io(window.location.origin);
+            
+            socket.on('room_created', (data) => {
+                currentRoomCode = data.room_code;
+                myPlayerNumber = data.player_number;
+                gameState = data.state;
+                const shareLink = `${window.location.origin}/room/${currentRoomCode}`;
+                document.getElementById('shareLinkInput').value = shareLink;
+                showScreen('waitingRoom');
+            });
+
+            socket.on('room_joined', (data) => {
+                currentRoomCode = data.room_code;
+                myPlayerNumber = data.player_number;
+                gameState = data.state;
+                startMultiplayerGame();
+            });
+
+            socket.on('opponent_joined', (data) => {
+                startMultiplayerGame();
+            });
+
+            socket.on('move_made', (data) => {
+                gameState = data.state;
+                updateGameDisplay();
+                drawBoard();
+                if (gameState.game_over) {
+                    handleGameOver();
+                }
+            });
+
+            socket.on('opponent_disconnected', () => {
+                alert('Opponent disconnected!');
+                showMainMenu();
+            });
+
+            socket.on('error', (data) => {
+                alert(data.message);
+                showMainMenu();
+            });
+        }
+
+        function startTimer() {
+            stopTimer();
+            if (!gameState || !gameState.remaining_time) return;
+            
+            document.getElementById('timer').style.display = 'block';
+            
+            timerInterval = setInterval(() => {
+                fetch('/api/check_time', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({game_id: gameId})
+                })
+                .then(res => res.json())
+                .then(data => {
+                    const time = data.remaining_time || 0;
+                    const minutes = Math.floor(time / 60);
+                    const seconds = time % 60;
+                    document.getElementById('timeDisplay').textContent = 
+                        `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                    
+                    const timerEl = document.getElementById('timer');
+                    if (time <= 30) {
+                        timerEl.classList.add('warning');
+                    } else {
+                        timerEl.classList.remove('warning');
+                    }
+                    
+                    if (data.time_up || data.game_over) {
+                        stopTimer();
+                        gameState = data.state;
+                        updateGameDisplay();
+                        drawBoard();
+                        handleGameOver();
+                    }
+                })
+                .catch(err => console.error('Timer error:', err));
+            }, 1000);
+        }
+
+        function stopTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+        }
+
+        function loadLevels() {
+            fetch('/api/levels')
+                .then(res => res.json())
+                .then(levels => {
+                    const grid = document.getElementById('levelGrid');
+                    grid.innerHTML = '';
+                    for (let i = 1; i <= 100; i++) {
+                        const level = levels[i];
+                        const btn = document.createElement('button');
+                        btn.className = `level-button ${level.difficulty}`;
+                        if (completedLevels.includes(i)) {
+                            btn.classList.add('completed');
+                        }
+                        btn.innerHTML = `<div>${i}</div><div class="level-info">${level.grid_size}x${level.grid_size}</div>`;
+                        btn.onclick = () => startSinglePlayerLevel(i);
+                        grid.appendChild(btn);
+                    }
+                });
+        }
+
+        function startSinglePlayerLevel(level) {
+            currentLevel = level;
+            gameMode = 'single';
+            stopTimer();
+            
+            fetch('/api/start_single_player', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({level: level})
+            })
+            .then(res => res.json())
+            .then(data => {
+                gameId = data.game_id;
+                gameState = data.state;
+                document.getElementById('currentLevel').textContent = level;
+                document.getElementById('difficultyBadge').textContent = data.level_info.difficulty.toUpperCase();
+                document.getElementById('difficultyBadge').className = `difficulty-badge ${data.level_info.difficulty}`;
+                document.getElementById('levelHeader').style.display = 'flex';
+                document.getElementById('player1Name').textContent = 'You';
+                document.getElementById('player2Name').textContent = 'AI';
+                setupCanvas(gameState.grid_size);
+                updateGameDisplay();
+                drawBoard();
+                showScreen('gameScreen');
+                updateStatus('Your turn! Complete more boxes than AI!');
+                startTimer();
+            });
+        }
+
+        function createRoom() {
+            const gridSize = parseInt(document.getElementById('gridSize').value);
+            socket.emit('create_room', {grid_size: gridSize});
+        }
+
+        function joinRoomDirectly(roomCode) {
+            currentRoomCode = roomCode;
+            socket.emit('join_room', {room_code: roomCode});
+        }
+
+        function copyShareLink() {
+            const input = document.getElementById('shareLinkInput');
+            input.select();
+            document.execCommand('copy');
+            alert('Link copied! Share it with your friend to start playing.');
+        }
+
+        function shareOnWhatsApp() {
+            const link = document.getElementById('shareLinkInput').value;
+            const text = encodeURIComponent(`Let's play Dots and Boxes! Join my game: ${link}`);
+            window.open(`https://wa.me/?text=${text}`, '_blank');
+        }
+
+        function shareGeneric() {
+            const link = document.getElementById('shareLinkInput').value;
+            if (navigator.share) {
+                navigator.share({
+                    title: 'Dots and Boxes Game',
+                    text: 'Join my game!',
+                    url: link
+                }).catch(err => console.log('Share failed', err));
+            } else {
+                copyShareLink();
+            }
+        }
+
+        function cancelRoom() {
+            if (socket && currentRoomCode) {
+                socket.emit('leave_room', {room_code: currentRoomCode});
+            }
+            window.history.pushState({}, '', '/');
+            showMultiplayerMenu();
+        }
+
+        function startMultiplayerGame() {
+            gameMode = 'multi';
+            stopTimer();
+            document.getElementById('levelHeader').style.display = 'none';
+            document.getElementById('timer').style.display = 'none';
+            document.getElementById('player1Name').textContent = 'Player 1 (Blue)';
+            document.getElementById('player2Name').textContent = 'Player 2 (Red)';
+            setupCanvas(gameState.grid_size);
+            updateGameDisplay();
+            drawBoard();
+            showScreen('gameScreen');
+            if (gameState.current_player === myPlayerNumber) {
+                updateStatus('Your turn!');
+                isMyTurn = true;
+            } else {
+                updateStatus("Opponent's turn...");
+                isMyTurn = false;
+            }
+        }
+
+        function setupCanvas(gridSize) {
+            const size = Math.min(600, window.innerWidth - 100);
+            cellSize = (size - offset * 2) / gridSize;
+            canvas.width = size;
+            canvas.height = size;
+        }
+
+        function drawBoard() {
+            if (!gameState) return;
+            const gridSize = gameState.grid_size;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            for (let i = 0; i < gridSize - 1; i++) {
+                for (let j = 0; j < gridSize - 1; j++) {
+                    if (gameState.boxes[i][j] !== 0) {
+                        const x = offset + j * cellSize;
+                        const y = offset + i * cellSize;
+                        ctx.fillStyle = gameState.boxes[i][j] === 1 ? 'rgba(66, 153, 225, 0.5)' : 'rgba(245, 101, 101, 0.5)';
+                        ctx.fillRect(x, y, cellSize, cellSize);
+                    }
+                }
+            }
+            
+            for (let i = 0; i < gridSize; i++) {
+                for (let j = 0; j < gridSize; j++) {
+                    ctx.fillStyle = '#333';
+                    ctx.beginPath();
+                    ctx.arc(offset + j * cellSize, offset + i * cellSize, dotRadius, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+            
+            for (let i = 0; i < gridSize; i++) {
+                for (let j = 0; j < gridSize - 1; j++) {
+                    const x1 = offset + j * cellSize;
+                    const x2 = offset + (j + 1) * cellSize;
+                    const y = offset + i * cellSize;
+                    
+                    const isHovered = hoveredLine && hoveredLine.type === 'horizontal' && 
+                                     hoveredLine.i === i && hoveredLine.j === j;
+                    
+                    if (gameState.horizontal_lines[i][j] === 0) {
+                        if (isHovered) {
+                            ctx.strokeStyle = '#667eea';
+                            ctx.lineWidth = 5;
+                        } else {
+                            ctx.strokeStyle = '#ddd';
+                            ctx.lineWidth = 3;
+                        }
+                    } else {
+                        ctx.strokeStyle = gameState.horizontal_lines[i][j] === 1 ? '#4299e1' : '#f56565';
+                        ctx.lineWidth = 6;
+                    }
+                    ctx.beginPath();
+                    ctx.moveTo(x1, y);
+                    ctx.lineTo(x2, y);
+                    ctx.stroke();
+                }
+            }
+            
+            for (let i = 0; i < gridSize - 1; i++) {
+                for (let j = 0; j < gridSize; j++) {
+                    const x = offset + j * cellSize;
+                    const y1 = offset + i * cellSize;
+                    const y2 = offset + (i + 1) * cellSize;
+                    
+                    const isHovered = hoveredLine && hoveredLine.type === 'vertical' && 
+                                     hoveredLine.i === i && hoveredLine.j === j;
+                    
+                    if (gameState.vertical_lines[i][j] === 0) {
+                        if (isHovered) {
+                            ctx.strokeStyle = '#667eea';
+                            ctx.lineWidth = 5;
+                        } else {
+                            ctx.strokeStyle = '#ddd';
+                            ctx.lineWidth = 3;
+                        }
+                    } else {
+                        ctx.strokeStyle = gameState.vertical_lines[i][j] === 1 ? '#4299e1' : '#f56565';
+                        ctx.lineWidth = 6;
+                    }
+                    ctx.beginPath();
+                    ctx.moveTo(x, y1);
+                    ctx.lineTo(x, y2);
+                    ctx.stroke();
+                }
+            }
+        }
+
+        let hoveredLine = null;
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!gameState || gameState.game_over) return;
+            if (gameMode === 'single' && gameState.current_player !== 1) return;
+            if (gameMode === 'multi' && !isMyTurn) return;
+            
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const line = getClickedLine(x, y);
+            
+            if (line && (!hoveredLine || hoveredLine.type !== line.type || hoveredLine.i !== line.i || hoveredLine.j !== line.j)) {
+                hoveredLine = line;
+                drawBoard();
+            } else if (!line && hoveredLine) {
+                hoveredLine = null;
+                drawBoard();
+            }
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            if (hoveredLine) {
+                hoveredLine = null;
+                drawBoard();
+            }
+        });
+
+        canvas.addEventListener('click', (e) => {
+            if (!gameState || gameState.game_over) {
+                return;
+            }
+            
+            if (gameMode === 'multi' && !isMyTurn) {
+                updateStatus("Wait for your turn!");
+                return;
+            }
+            
+            if (gameMode === 'single' && gameState.current_player !== 1) {
+                updateStatus("Wait for AI...");
+                return;
+            }
+            
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const line = getClickedLine(x, y);
+            
+            if (line) {
+                makeMove(line);
+            }
+        });
+
+        function getClickedLine(x, y) {
+            const gridSize = gameState.grid_size;
+            const clickTolerance = 20;
+            
+            for (let i = 0; i < gridSize; i++) {
+                for (let j = 0; j < gridSize - 1; j++) {
+                    if (gameState.horizontal_lines[i][j] === 0) {
+                        const x1 = offset + j * cellSize;
+                        const x2 = offset + (j + 1) * cellSize;
+                        const lineY = offset + i * cellSize;
+                        
+                        if (x >= x1 - clickTolerance && x <= x2 + clickTolerance && 
+                            Math.abs(y - lineY) < clickTolerance) {
+                            return {type: 'horizontal', i, j};
+                        }
+                    }
+                }
+            }
+            
+            for (let i = 0; i < gridSize - 1; i++) {
+                for (let j = 0; j < gridSize; j++) {
+                    if (gameState.vertical_lines[i][j] === 0) {
+                        const lineX = offset + j * cellSize;
+                        const y1 = offset + i * cellSize;
+                        const y2 = offset + (i + 1) * cellSize;
+                        
+                        if (y >= y1 - clickTolerance && y <= y2 + clickTolerance && 
+                            Math.abs(x - lineX) < clickTolerance) {
+                            return {type: 'vertical', i, j};
+                        }
+                    }
+                }
+            }
+            
+            return null;
+        }
+
+        function makeMove(line) {
+            if (gameMode === 'single') {
+                canvas.style.pointerEvents = 'none';
+                
+                fetch('/api/make_move', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        game_id: gameId,
+                        line_type: line.type,
+                        i: line.i,
+                        j: line.j
+                    })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) {
+                        updateStatus(data.error);
+                        canvas.style.pointerEvents = 'auto';
+                        if (data.state) {
+                            gameState = data.state;
+                            updateGameDisplay();
+                            drawBoard();
+                            if (gameState.game_over) {
+                                handleGameOver();
+                            }
+                        }
+                        return;
+                    }
+                    
+                    gameState = data.state;
+                    updateGameDisplay();
+                    drawBoard();
+                    
+                    if (gameState.game_over) {
+                        handleGameOver();
+                        canvas.style.pointerEvents = 'auto';
+                    } else if (gameState.current_player === 1) {
+                        updateStatus('Your turn!');
+                        canvas.style.pointerEvents = 'auto';
+                    } else {
+                        updateStatus('AI is playing...');
+                        setTimeout(() => {
+                            canvas.style.pointerEvents = 'auto';
+                        }, 300);
+                    }
+                })
+                .catch(err => {
+                    console.error('Move error:', err);
+                    updateStatus('Error making move. Try again.');
+                    canvas.style.pointerEvents = 'auto';
+                });
+            } else if (gameMode === 'multi') {
+                socket.emit('multiplayer_move', {
+                    room_code: currentRoomCode,
+                    line_type: line.type,
+                    i: line.i,
+                    j: line.j
+                });
+            }
+        }
+
+        function updateGameDisplay() {
+            document.getElementById('player1Score').textContent = gameState.scores[0];
+            document.getElementById('player2Score').textContent = gameState.scores[1];
+            document.getElementById('player1Info').classList.toggle('active', gameState.current_player === 1);
+            document.getElementById('player2Info').classList.toggle('active', gameState.current_player === 2);
+            if (gameMode === 'multi') {
+                isMyTurn = gameState.current_player === myPlayerNumber;
+                if (isMyTurn) {
+                    updateStatus('Your turn!');
+                } else {
+                    updateStatus("Opponent's turn...");
+                }
+            }
+        }
+
+        function updateStatus(message) {
+            document.getElementById('gameStatus').textContent = message;
+        }
+
+        function handleGameOver() {
+            stopTimer();
+            const msg = document.getElementById('gameOverMessage');
+            msg.style.display = 'block';
+            
+            if (gameMode === 'single') {
+                if (gameState.time_up) {
+                    msg.textContent = '⏰ Time Up!';
+                    msg.style.background = '#f56565';
+                    if (gameState.winner === 1) {
+                        msg.textContent += ' But You Win! 🎉';
+                        msg.style.background = '#48bb78';
+                        if (!completedLevels.includes(currentLevel)) {
+                            completedLevels.push(currentLevel);
+                            localStorage.setItem('completedLevels', JSON.stringify(completedLevels));
+                            loadLevels();
+                        }
+                        if (currentLevel < 100) {
+                            document.getElementById('nextLevelBtn').style.display = 'inline-block';
+                        }
+                    } else {
+                        msg.textContent += ' AI Wins!';
+                        updateStatus('Time ran out! Try to be faster next time.');
+                    }
+                } else if (gameState.winner === 1) {
+                    msg.textContent = '🎉 You Win!';
+                    msg.style.background = '#48bb78';
+                    if (!completedLevels.includes(currentLevel)) {
+                        completedLevels.push(currentLevel);
+                        localStorage.setItem('completedLevels', JSON.stringify(completedLevels));
+                        loadLevels();
+                    }
+                    if (currentLevel < 100) {
+                        document.getElementById('nextLevelBtn').style.display = 'inline-block';
+                    }
+                    updateStatus('Congratulations! You beat the AI!');
+                } else if (gameState.winner === 2) {
+                    msg.textContent = '😞 AI Wins! Try Again';
+                    msg.style.background = '#f56565';
+                    updateStatus('AI won this time. Try again to beat it!');
+                } else {
+                    msg.textContent = "🤝 It's a Tie!";
+                    msg.style.background = '#ed8936';
+                    updateStatus('Close match! Try again to win!');
+                }
+                document.getElementById('retryLevelBtn').style.display = 'inline-block';
+            } else {
+                if (gameState.winner === 0) {
+                    msg.textContent = "🤝 It's a Tie!";
+                    msg.style.background = '#ed8936';
+                } else if (gameState.winner === myPlayerNumber) {
+                    msg.textContent = '🎉 You Win!';
+                    msg.style.background = '#48bb78';
+                } else {
+                    msg.textContent = '😞 You Lose!';
+                    msg.style.background = '#f56565';
+                }
+            }
+        }
+
+        function nextLevel() {
+            if (currentLevel < 100) {
+                startSinglePlayerLevel(currentLevel + 1);
+                document.getElementById('nextLevelBtn').style.display = 'none';
+                document.getElementById('retryLevelBtn').style.display = 'none';
+                document.getElementById('gameOverMessage').style.display = 'none';
+            }
+        }
+
+        function retryLevel() {
+            startSinglePlayerLevel(currentLevel);
+            document.getElementById('nextLevelBtn').style.display = 'none';
+            document.getElementById('retryLevelBtn').style.display = 'none';
+            document.getElementById('gameOverMessage').style.display = 'none';
+        }
+
+        function quitGame() {
+            stopTimer();
+            if (gameMode === 'multi' && socket && currentRoomCode) {
+                socket.emit('leave_room', {room_code: currentRoomCode});
+            }
+            window.history.pushState({}, '', '/');
+            document.getElementById('gameOverMessage').style.display = 'none';
+            document.getElementById('nextLevelBtn').style.display = 'none';
+            document.getElementById('retryLevelBtn').style.display = 'none';
+            showMainMenu();
+        }
+
+        function showScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+        }
+
+        function showMainMenu() {
+            showScreen('mainMenu');
+        }
+
+        function showLevelSelect() {
+            showScreen('levelSelect');
+        }
+
+        function showMultiplayerMenu() {
+            showScreen('multiplayerMenu');
+        }
+    </script>
+</body>
+</html>
